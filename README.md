@@ -1,42 +1,71 @@
-## 📌 Problem Statement
-T1 – AI Customer Service Agent (RAG over Tickets & Dialogues)
----
-## Overview
-Telecom customer support teams handle a high volume of repetitive queries related to network issues, billing, data speed, and SIM services. This project presents a **Retrieval-Augmented Generation (RAG)** based AI assistant that answers common customer queries using historical telecom support interactions and escalates sensitive issues when required.
+# AI Customer Service Agent (Gemini)
 
----
+This project is an AI-powered customer service agent for a telecom company. It uses Google's Gemini model (Gemini Flash) for generating responses and ChromaDB for vector search (RAG - Retrieval Augmented Generation).
 
-## Solution
-The system retrieves relevant past support tickets and dialogues, uses them as context for response generation, and returns both the generated answer and the source document references. A lightweight rule-based escalation mechanism flags high-risk queries for human review.
----
+## Features
+- Retrieves relevant customer interaction history from a CSV dataset.
+- Uses RAG (Retrieval Augmented Generation) to answer customer queries.
+- Escalates queries based on keywords (e.g., "refund", "legal").
+- Powered by Google Gemini and LangChain.
 
-## System Architecture
-1. Data ingestion from historical telecom support interactions  
-2. Text chunking for efficient retrieval  
-3. Sentence-level embeddings for semantic search  
-4. Vector similarity search using ChromaDB  
-5. Retrieval-Augmented Generation via LangChain  
-6. Rule-based escalation logic  
-7. REST API interface using FastAPI  
-
----
-
-## Dataset
-- Telecom Agent–Customer Interaction Text  
-  https://www.kaggle.com/datasets/avinashok/telecomagentcustomerinteractiontext  
-
----
-
-## Technology Stack
+## Prerequisites
 - Python 3.10+
-- LangChain
-- ChromaDB
-- SentenceTransformers
-- FastAPI
-- Uvicorn
+- Google Cloud API Key (for Gemini)
 
----
+## Setup
 
-## API Interface
+1.  **Clone the repository** (if not already done).
 
-### Endpoint
+2.  **Create and activate a virtual environment**:
+    ```bash
+    python -m venv venv
+    # Windows:
+    venv\Scripts\activate
+    # Mac/Linux:
+    source venv/bin/activate
+    ```
+
+3.  **Install dependencies**:
+    ```bash
+    pip install -r requirements.txt
+    ```
+
+4.  **Environment Variables**:
+    Create a `.env` file in the root directory and add your Google API key:
+    ```
+    GOOGLE_API_KEY=your_api_key_here
+    ```
+
+## Usage
+
+### 1. Ingest Data
+Before running the app, you need to ingest the data into the vector store.
+```bash
+python ingest.py
+```
+This will read `data/telecom_interactions.csv`, chunk the text, generate embeddings, and store them in `vectorstore/`.
+
+### 2. Run the Application
+Start the FastAPI server:
+```bash
+python app.py
+```
+The server will run at `http://0.0.0.0:8000`.
+
+### 3. Test the Agent
+You can test the agent using the provided test script:
+```bash
+python test_gemini.py
+```
+Or send a POST request to the API:
+```bash
+curl -X POST "http://localhost:8000/ask" -H "Content-Type: application/json" -d "{\"query\": \"I want to port out\"}"
+```
+
+## API Endpoints
+- `GET /`: Health check.
+- `POST /ask`: Ask a question. Body: `{"query": "your question"}`.
+
+## Troubleshooting
+- **API Key Error**: Ensure your `GOOGLE_API_KEY` is valid and has access to Gemini API.
+- **ModuleNotFoundError**: Ensure you have installed all requirements and activated the virtual environment.
