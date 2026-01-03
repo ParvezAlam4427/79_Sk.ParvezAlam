@@ -1,40 +1,35 @@
 from fastapi import FastAPI
+import uvicorn
 from pydantic import BaseModel
 from dotenv import load_dotenv
 import os
-
 import google.generativeai as genai
 
 from langchain_community.vectorstores import Chroma
 from langchain_community.embeddings import SentenceTransformerEmbeddings
 
-# ---------------- CONFIG ----------------
+load_dotenv(override=True)
+
 VECTORSTORE_PATH = "vectorstore"
 EMBEDDING_MODEL = "all-MiniLM-L6-v2"
 
-ESCALATION_KEYWORDS = [
-    "refund", "cancel", "complaint", "legal", "fraud", "chargeback"
-]
-# ----------------------------------------
+ESCALATION_KEYWORDS = ["refund", "cancel", "complaint", "legal", "fraud"]
 
-# Load environment variables
-load_dotenv()
-GOOGLE_API_KEY = os.getenv("GOOGLE_API_KEY")
-print("GOOGLE_API_KEY loaded:", bool(GOOGLE_API_KEY))
+api_key = os.getenv("GOOGLE_API_KEY")
+if not api_key:
+    print("Warning: GOOGLE_API_KEY not found in environment variables.")
 
-# Configure Gemini
-genai.configure(api_key=GOOGLE_API_KEY)
-model = genai.GenerativeModel("gemini-pro")
+genai.configure(api_key=api_key)
+model = genai.GenerativeModel("gemini-flash-latest")
 
-# Initialize FastAPI
-app = FastAPI(title="AI Customer Service Agent")
+app = FastAPI(title="AI Customer Service Agent (Gemini)")
 
-# Initialize embeddings
-embeddings = SentenceTransformerEmbeddings(
-    model_name=EMBEDDING_MODEL
-)
+@app.get("/")
+def root():
+    return {"message": "AI Customer Service Agent running"}
 
-# Load vector store
+embeddings = SentenceTransformerEmbeddings(model_name=EMBEDDING_MODEL)
+
 vectorstore = Chroma(
     persist_directory=VECTORSTORE_PATH,
     embedding_function=embeddings
@@ -42,28 +37,28 @@ vectorstore = Chroma(
 
 retriever = vectorstore.as_retriever(search_kwargs={"k": 3})
 
-# Request schema
 class QueryRequest(BaseModel):
     query: str
 
-# Escalation logic
 def should_escalate(query: str) -> bool:
-    query_lower = query.lower()
-    return any(keyword in query_lower for keyword in ESCALATION_KEYWORDS)
+    return any(k in query.lower() for k in ESCALATION_KEYWORDS)
 
-# API endpoint
 @app.post("/ask")
 def ask_question(request: QueryRequest):
-    # 1️⃣ Retrieve relevant documents
-    docs = retriever.get_relevant_documents(request.query)
+    try:
+        docs = retriever.invoke(request.query)
 
-    context = "\n\n".join([doc.page_content for doc in docs])
+        if not docs:
+            return {
+                "answer": "No relevant data found. Escalating.",
+                "sources": [],
+                "escalate": True
+            }
 
-    # 2️⃣ Build prompt
-    prompt = f"""
+        context = "\n\n".join([doc.page_content for doc in docs])
+
+        prompt = f"""
 You are a telecom customer support assistant.
-
-Use the following past support interactions to answer the question.
 
 Context:
 {context}
@@ -74,17 +69,22 @@ Question:
 Answer clearly and professionally.
 """
 
-    # 3️⃣ Call Gemini directly
-    response = model.generate_content(prompt)
+        response = model.generate_content(prompt)
 
-    # 4️⃣ Collect sources
-    sources = []
-    for i, doc in enumerate(docs):
-        row_id = doc.metadata.get("row_id", i)
-        sources.append(f"row_{row_id}")
+        sources = [f"row_{doc.metadata.get('row_id')}" for doc in docs]
 
-    return {
-        "answer": response.text,
-        "sources": sources,
-        "escalate": should_escalate(request.query)
-    }
+        return {
+            "answer": response.text,
+            "sources": sources,
+            "escalate": should_escalate(request.query)
+        }
+    except Exception as e:
+        return {
+            "answer": "I'm sorry, I encountered an error processing your request.",
+            "sources": [],
+            "escalate": True,
+            "error": str(e)
+        }
+
+if __name__ == "__main__":
+    uvicorn.run(app, host="0.0.0.0", port=8000)
